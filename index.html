@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Halal Food Scanner</title>
+    <style>
+        :root {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --danger: #ef4444;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary-dark);
+            margin-bottom: 8px;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-top: 0;
+            margin-bottom: 24px;
+        }
+
+        .scanner-box {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        input[type="text"] {
+            padding: 12px 16px;
+            font-size: 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+        }
+
+        button {
+            padding: 12px 16px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: var(--primary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .examples {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 20px;
+        }
+
+        .examples span {
+            display: inline-block;
+            background: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px;
+            cursor: pointer;
+        }
+
+        .examples span:hover {
+            background: #e2e8f0;
+        }
+
+        .result-card {
+            border-radius: 12px;
+            padding: 20px;
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-card.halal {
+            background-color: #ecfdf5;
+            border: 2px solid #34d399;
+            color: #065f46;
+        }
+
+        .result-card.haram {
+            background-color: #fef2f2;
+            border: 2px solid #f87171;
+            color: #991b1b;
+        }
+
+        .result-card h2 {
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ingredients-list {
+            margin-top: 12px;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .badge.halal { background-color: #10b981; color: white; }
+        .badge.haram { background-color: var(--danger); color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Halal Food Scanner</h1>
+    <p class="subtitle">Check if a food item is free from pork, alcohol, dead meat, and gelatin.</p>
+
+    <div class="scanner-box">
+        <input type="text" id="foodInput" placeholder="Enter food name or barcode (e.g., Gummy Bears)...">
+        <button onclick="scanFood()">Scan / Check Food</button>
+    </div>
+
+    <div class="examples">
+        Try clicking an item: 
+        <span onclick="setSearch('Beef Burger')">Beef Burger</span>
+        <span onclick="setSearch('Gummy Bears')">Gummy Bears</span>
+        <span onclick="setSearch('Vanilla Cake')">Vanilla Cake</span>
+        <span onclick="setSearch('Pepperoni Pizza')">Pepperoni Pizza</span>
+    </div>
+
+    <div id="resultCard" class="result-card">
+        <h2 id="resultTitle"></h2>
+        <p id="resultMessage"></p>
+        <div class="ingredients-list">
+            <strong>Ingredients: </strong><span id="resultIngredients"></span>
+        </div>
+        <div>
+            <span id="resultBadge" class="badge"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Embedded JSON Database of Food Items
+    const foodDatabase = [
+        {
+            "name": "beef burger",
+            "isHalal": true,
+            "ingredients": ["Halal Beef Patty", "Bun", "Lettuce", "Tomato", "Mayonnaise"],
+            "reason": "Contains no prohibited ingredients."
+        },
+        {
+            "name": "gummy bears",
+            "isHalal": false,
+            "ingredients": ["Sugar", "Corn Syrup", "Pork Gelatin", "Citric Acid"],
+            "reason": "Contains pork gelatin, which is prohibited."
+        },
+        {
+            "name": "vanilla cake",
+            "isHalal": false,
+            "ingredients": ["Flour", "Sugar", "Eggs", "Vanilla Extract (contains alcohol)", "Butter"],
+            "reason": "Contains vanilla extract containing alcohol."
+        },
+        {
+            "name": "pepperoni pizza",
+            "isHalal": false,
+            "ingredients": ["Dough", "Tomato Sauce", "Mozzarella Cheese", "Pork Pepperoni"],
+            "reason": "Contains pork pepperoni."
+        },
+        {
+            "name": "margherita pizza",
+            "isHalal": true,
+            "ingredients": ["Dough", "Tomato Sauce", "Mozzarella Cheese", "Basil", "Olive Oil"],
+            "reason": "Vegetarian-friendly and contains no prohibited elements."
+        },
+        {
+            "name": "chicken wrap",
+            "isHalal": true,
+            "ingredients": ["Tortilla", "Grilled Chicken", "Cheddar Cheese", "Ranch Dressing"],
+            "reason": "Uses certified ingredients with no alcohol, gelatin, or pork."
+        }
+    ];
+
+    function setSearch(itemName) {
+        document.getElementById('foodInput').value = itemName;
+        scanFood();
+    }
+
+    function scanFood() {
+        const query = document.getElementById('foodInput').value.trim().toLowerCase();
+        const resultCard = document.getElementById('resultCard');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultMessage = document.getElementById('resultMessage');
+        const resultIngredients = document.getElementById('resultIngredients');
+        const resultBadge = document.getElementById('resultBadge');
+
+        if (!query) {
+            resultCard.style.display = 'none';
+            return;
+        }
+
+        // Search the JSON database
+        const foundItem = foodDatabase.find(item => item.name.includes(query));
+
+        resultCard.style.display = 'block';
+
+        if (foundItem) {
+            resultIngredients.textContent = foundItem.ingredients.join(', ');
+            
+            if (foundItem.isHalal) {
+                resultCard.className = 'result-card halal';
+                resultTitle.innerHTML = `✅ Halal Verified`;
+                resultMessage.textContent = `"${foundItem.name}" is safe to consume. ${foundItem.reason}`;
+                resultBadge.textContent = 'HALAL';
+                resultBadge.className = 'badge halal';
+            } else {
+                resultCard.className = 'result-card haram';
+                resultTitle.innerHTML = `❌ Not Halal (Haram)`;
+                resultMessage.textContent = `"${foundItem.name}" is not recommended. ${foundItem.reason}`;
+                resultBadge.textContent = 'HARAM / AVOID';
+                resultBadge.className = 'badge haram';
+            }
+        } else {
+            // Default handling if item isn't explicitly in the local mock JSON database
+            resultCard.className = 'result-card haram';
+            resultTitle.innerHTML = `⚠️ Unknown Item`;
+            resultMessage.textContent = `"${query}" is not found in our database. Please check the label manually for pork, alcohol, dead meat, or gelatin ingredients.`;
+            resultIngredients.textContent = 'Unknown';
+            resultBadge.textContent = 'UNVERIFIED';
+            resultBadge.className = 'badge haram';
+        }
+    }
+</script>
+
+</body>
+</html>

@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Halal Live Food Scanner</title>
-    <!-- QuaggaJS for Camera Barcode Scanning -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <title>Halal Ingredient Scanner</title>
     <style>
         :root {
             --primary: #10b981;
@@ -57,22 +55,21 @@
             margin-bottom: 24px;
         }
 
-        .input-row {
-            display: flex;
-            gap: 8px;
-        }
-
-        input[type="text"] {
-            flex: 1;
+        textarea {
+            width: 100%;
+            height: 120px;
             padding: 12px 16px;
-            font-size: 16px;
+            font-size: 15px;
             border: 2px solid #e2e8f0;
             border-radius: 8px;
             outline: none;
+            resize: vertical;
             transition: border-color 0.2s;
+            box-sizing: border-box;
+            font-family: inherit;
         }
 
-        input[type="text"]:focus {
+        textarea:focus {
             border-color: var(--primary);
         }
 
@@ -92,28 +89,23 @@
             background-color: var(--primary-dark);
         }
 
-        .camera-btn {
-            background-color: #3b82f6;
-        }
-        .camera-btn:hover {
-            background-color: #2563eb;
+        .examples {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 20px;
         }
 
-        /* Camera Viewport Styling */
-        #interactive.viewport {
-            position: relative;
-            width: 100%;
-            height: 250px;
-            background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            display: none;
-            margin-bottom: 12px;
+        .examples span {
+            display: inline-block;
+            background: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px;
+            cursor: pointer;
         }
-        #interactive.viewport video, canvas {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+
+        .examples span:hover {
+            background: #e2e8f0;
         }
 
         .result-card {
@@ -147,10 +139,10 @@
             gap: 8px;
         }
 
-        .ingredients-list {
-            margin-top: 12px;
-            font-size: 14px;
-            word-break: break-word;
+        .flagged-list {
+            margin-top: 8px;
+            font-weight: bold;
+            color: var(--danger);
         }
 
         .badge {
@@ -159,45 +151,36 @@
             border-radius: 4px;
             font-size: 12px;
             font-weight: bold;
-            margin-top: 8px;
+            margin-top: 12px;
         }
 
         .badge.halal { background-color: #10b981; color: white; }
         .badge.haram { background-color: var(--danger); color: white; }
-        
-        .loader {
-            text-align: center;
-            color: #64748b;
-            font-style: italic;
-            display: none;
-            margin-bottom: 15px;
-        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Halal Live Scanner</h1>
-    <p class="subtitle">Scan any product barcode to fetch global ingredients and screen for Halal compliance.</p>
+    <h1>Halal Ingredient Scanner</h1>
+    <p class="subtitle">Paste or type product ingredients to screen for pork, alcohol, dead meat, and gelatin.</p>
 
     <div class="scanner-box">
-        <!-- Live Camera Viewfinder Element -->
-        <div id="interactive" class="viewport"></div>
-
-        <div class="input-row">
-            <input type="text" id="barcodeInput" placeholder="Enter barcode number...">
-            <button onclick="fetchProductData()">Check Barcode</button>
-        </div>
-        <button id="cameraToggleBtn" class="camera-btn" onclick="toggleCamera()">📷 Use iPhone Camera Scanner</button>
+        <textarea id="ingredientInput" placeholder="Paste ingredients here (e.g., Sugar, water, pork gelatin, natural flavors)..."></textarea>
+        <button onclick="checkIngredients()">Scan Ingredients</button>
     </div>
 
-    <div id="loader" class="loader">Fetching live ingredients from global database...</div>
+    <div class="examples">
+        Try an example: 
+        <span onclick="setExample('Sugar, corn syrup, pork gelatin, citric acid, artificial colors')">Gummies (Haram)</span>
+        <span onclick="setExample('Enriched flour, water, yeast, salt, vegetable oil, tomato sauce')">Bread & Sauce (Halal)</span>
+        <span onclick="setExample('Water, sugar, vanilla extract, chocolate, emulsifiers')">Vanilla Cake (Alcohol risk)</span>
+    </div>
 
     <div id="resultCard" class="result-card">
         <h2 id="resultTitle"></h2>
         <p id="resultMessage"></p>
-        <div class="ingredients-list">
-            <strong>Detected Ingredients: </strong><span id="resultIngredients"></span>
+        <div id="flaggedContainer" style="display:none;">
+            Flagged Ingredients: <span id="flaggedList" class="flagged-list"></span>
         </div>
         <div>
             <span id="resultBadge" class="badge"></span>
@@ -206,134 +189,59 @@
 </div>
 
 <script>
-    let cameraActive = false;
+    function setExample(text) {
+        document.getElementById('ingredientInput').value = text;
+        checkIngredients();
+    }
 
-    async function fetchProductData() {
-        if (cameraActive) toggleCamera();
-        const barcode = document.getElementById('barcodeInput').value.trim();
+    function checkIngredients() {
+        const rawText = document.getElementById('ingredientInput').value.trim();
         const resultCard = document.getElementById('resultCard');
-        const loader = document.getElementById('loader');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultMessage = document.getElementById('resultMessage');
+        const flaggedContainer = document.getElementById('flaggedContainer');
+        const flaggedList = document.getElementById('flaggedList');
+        const resultBadge = document.getElementById('resultBadge');
 
-        if (!barcode) {
+        if (!rawText) {
             resultCard.style.display = 'none';
             return;
         }
 
-        resultCard.style.display = 'none';
-        loader.style.display = 'block';
+        const lowerText = rawText.toLowerCase();
 
-        try {
-            // Fetch live product info from Open Food Facts API
-            const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-            const data = await response.json();
-
-            loader.style.display = 'none';
-
-            if (data.status === 1) {
-                const product = data.product;
-                const productName = product.product_name || "Unknown Product";
-                const ingredientsText = product.ingredients_text_en || product.ingredients_text || "Ingredients data not available.";
-
-                analyzeHalalCompliance(productName, ingredientsText);
-            } else {
-                showResult(false, "Product Not Found", "This barcode isn't registered in the global database. Please check ingredients manually on the packaging.", "Unknown ingredients");
-            }
-        } catch (error) {
-            loader.style.display = 'none';
-            alert("Error connecting to the internet/database.");
-        }
-    }
-
-    function analyzeHalalCompliance(productName, ingredients) {
-        const lowerIngredients = ingredients.toLowerCase();
-
-        // Prohibited terms check (Pork, Alcohol, Gelatin, Non-halal animal elements)
-        const forbiddenWords = [
-            'pork', 'bacon', 'ham', 'gelatin', 'lard', 'pepsin', 
-            'wine', 'beer', 'alcohol', 'ethanol', 'rum', 'liqueur', 'brandy'
+        // Prohibited/Haram keywords check
+        const prohibitedKeywords = [
+            'pork', 'bacon', 'ham', 'lard', 'gelatin', 'pepsin', 
+            'wine', 'beer', 'alcohol', 'ethanol', 'rum', 'liqueur', 'brandy', 'non-halal meat'
         ];
 
-        let foundViolations = forbiddenWords.filter(word => lowerIngredients.includes(word));
-
-        if (foundViolations.length > 0) {
-            showResult(
-                false, 
-                `Not Halal (Haram): ${productName}`, 
-                `Contains prohibited elements: ${foundViolations.join(', ')}.`, 
-                ingredients
-            );
-        } else {
-            showResult(
-                true, 
-                `Likely Halal: ${productName}`, 
-                `No explicit pork, alcohol, or gelatin ingredients detected in the live API scan.`, 
-                ingredients
-            );
-        }
-    }
-
-    function showResult(isHalal, title, message, ingredients) {
-        const resultCard = document.getElementById('resultCard');
-        const resultTitle = document.getElementById('resultTitle');
-        const resultMessage = document.getElementById('resultMessage');
-        const resultIngredients = document.getElementById('resultIngredients');
-        const resultBadge = document.getElementById('resultBadge');
+        // Find which specific banned words appear in the text
+        let foundViolations = prohibitedKeywords.filter(keyword => {
+            // Match whole words to avoid partial bugs
+            const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+            return regex.test(lowerText);
+        });
 
         resultCard.style.display = 'block';
-        resultIngredients.textContent = ingredients;
 
-        if (isHalal) {
-            resultCard.className = 'result-card halal';
-            resultTitle.innerHTML = `✅ Halal Verified`;
-            resultMessage.textContent = message;
-            resultBadge.textContent = 'HALAL';
-            resultBadge.className = 'badge halal';
-        } else {
+        if (foundViolations.length > 0) {
+            // Haram Case
             resultCard.className = 'result-card haram';
-            resultTitle.innerHTML = `❌ Haram / Avoid`;
-            resultMessage.textContent = message;
-            resultBadge.textContent = 'HARAM';
+            resultTitle.innerHTML = `❌ Not Halal (Haram)`;
+            resultMessage.textContent = `Warning: Prohibited ingredients were detected in this list.`;
+            flaggedContainer.style.display = 'block';
+            flaggedList.textContent = [...new Set(foundViolations)].join(', ');
+            resultBadge.textContent = 'HARAM / AVOID';
             resultBadge.className = 'badge haram';
-        }
-    }
-
-    // Toggle Camera Viewfinder
-    function toggleCamera() {
-        const viewport = document.getElementById('interactive');
-        const btn = document.getElementById('cameraToggleBtn');
-
-        if (!cameraActive) {
-            viewport.style.display = 'block';
-            btn.textContent = "🛑 Stop Camera";
-            cameraActive = true;
-
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: viewport,
-                    constraints: { facingMode: "environment" }
-                },
-                decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader"] }
-            }, function(err) {
-                if (err) {
-                    alert("Camera access denied or unavailable.");
-                    toggleCamera();
-                    return;
-                }
-                Quagga.start();
-            });
-
-            Quagga.onDetected(function(result) {
-                document.getElementById('barcodeInput').value = result.codeResult.code;
-                toggleCamera();
-                fetchProductData();
-            });
         } else {
-            Quagga.stop();
-            viewport.style.display = 'none';
-            btn.textContent = "📷 Use iPhone Camera Scanner";
-            cameraActive = false;
+            // Halal Case
+            resultCard.className = 'result-card halal';
+            resultTitle.innerHTML = `✅ No Prohibited Ingredients Found`;
+            resultMessage.textContent = `The scanned ingredient text does not contain explicit mentions of pork, alcohol, dead meat, or gelatin.`;
+            flaggedContainer.style.display = 'none';
+            resultBadge.textContent = 'LIKELY HALAL';
+            resultBadge.className = 'badge halal';
         }
     }
 </script>

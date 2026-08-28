@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Halal Food Scanner</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         :root {
             --primary: #10b981;
@@ -55,7 +56,13 @@
             margin-bottom: 24px;
         }
 
+        .input-row {
+            display: flex;
+            gap: 8px;
+        }
+
         input[type="text"] {
+            flex: 1;
             padding: 12px 16px;
             font-size: 16px;
             border: 2px solid #e2e8f0;
@@ -82,6 +89,30 @@
 
         button:hover {
             background-color: var(--primary-dark);
+        }
+
+        .camera-btn {
+            background-color: #3b82f6;
+        }
+        .camera-btn:hover {
+            background-color: #2563eb;
+        }
+
+        /* Camera Viewport Styling */
+        #interactive.viewport {
+            position: relative;
+            width: 100%;
+            height: 250px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: none;
+            margin-bottom: 12px;
+        }
+        #interactive.viewport video, canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .examples {
@@ -151,18 +182,21 @@
         .badge.halal { background-color: #10b981; color: white; }
         .badge.haram { background-color: var(--danger); color: white; }
     </style>
-    <link rel="icon" type="image/x-icon" href="halal-food-scanner.png">
-    <link rel="apple-touch-icon" href="halal-food-scanner.png">
 </head>
 <body>
 
 <div class="container">
     <h1>Halal Food Scanner</h1>
-    <p class="subtitle">Check if a food item is free from pork, alcohol, dead meat, and gelatin.</p>
+    <p class="subtitle">Scan barcodes via iPhone camera or search items manually.</p>
 
     <div class="scanner-box">
-        <input type="text" id="foodInput" placeholder="Enter food name or barcode (e.g., Gummy Bears)...">
-        <button onclick="scanFood()">Scan / Check Food</button>
+        <div id="interactive" class="viewport"></div>
+
+        <div class="input-row">
+            <input type="text" id="foodInput" placeholder="Enter food name or barcode...">
+            <button onclick="scanFood()">Search</button>
+        </div>
+        <button id="cameraToggleBtn" class="camera-btn" onclick="toggleCamera()">📷 Use iPhone Camera Scanner</button>
     </div>
 
     <div class="examples">
@@ -186,52 +220,48 @@
 </div>
 
 <script>
-    // Embedded JSON Database of Food Items
+    // Expanded Mock JSON Database mapping both text names and barcodes
     const foodDatabase = [
         {
-            "name": "beef burger",
+            "keys": ["beef burger", "012345678905"],
+            "name": "Beef Burger",
             "isHalal": true,
             "ingredients": ["Halal Beef Patty", "Bun", "Lettuce", "Tomato", "Mayonnaise"],
             "reason": "Contains no prohibited ingredients."
         },
         {
-            "name": "gummy bears",
+            "keys": ["gummy bears", "070923123456"],
+            "name": "Gummy Bears",
             "isHalal": false,
             "ingredients": ["Sugar", "Corn Syrup", "Pork Gelatin", "Citric Acid"],
             "reason": "Contains pork gelatin, which is prohibited."
         },
         {
-            "name": "vanilla cake",
+            "keys": ["vanilla cake", "054321098765"],
+            "name": "Vanilla Cake",
             "isHalal": false,
             "ingredients": ["Flour", "Sugar", "Eggs", "Vanilla Extract (contains alcohol)", "Butter"],
             "reason": "Contains vanilla extract containing alcohol."
         },
         {
-            "name": "pepperoni pizza",
+            "keys": ["pepperoni pizza", "098765432101"],
+            "name": "Pepperoni Pizza",
             "isHalal": false,
             "ingredients": ["Dough", "Tomato Sauce", "Mozzarella Cheese", "Pork Pepperoni"],
             "reason": "Contains pork pepperoni."
-        },
-        {
-            "name": "margherita pizza",
-            "isHalal": true,
-            "ingredients": ["Dough", "Tomato Sauce", "Mozzarella Cheese", "Basil", "Olive Oil"],
-            "reason": "Vegetarian-friendly and contains no prohibited elements."
-        },
-        {
-            "name": "chicken wrap",
-            "isHalal": true,
-            "ingredients": ["Tortilla", "Grilled Chicken", "Cheddar Cheese", "Ranch Dressing"],
-            "reason": "Uses certified ingredients with no alcohol, gelatin, or pork."
         }
     ];
 
+    let cameraActive = false;
+
     function setSearch(itemName) {
+        if (cameraActive) toggleCamera(); // Turn off camera if active
         document.getElementById('foodInput').value = itemName;
         scanFood();
     }
 
     function scanFood() {
+        if (cameraActive) toggleCamera();
         const query = document.getElementById('foodInput').value.trim().toLowerCase();
         const resultCard = document.getElementById('resultCard');
         const resultTitle = document.getElementById('resultTitle');
@@ -244,8 +274,10 @@
             return;
         }
 
-        // Search the JSON database
-        const foundItem = foodDatabase.find(item => item.name.includes(query));
+        // Search database keys (matches name or barcode)
+        const foundItem = foodDatabase.find(item => 
+            item.keys.some(key => key.toLowerCase().includes(query))
+        );
 
         resultCard.style.display = 'block';
 
@@ -266,13 +298,59 @@
                 resultBadge.className = 'badge haram';
             }
         } else {
-            // Default handling if item isn't explicitly in the local mock JSON database
             resultCard.className = 'result-card haram';
             resultTitle.innerHTML = `⚠️ Unknown Item`;
-            resultMessage.textContent = `"${query}" is not found in our database. Please check the label manually for pork, alcohol, dead meat, or gelatin ingredients.`;
+            resultMessage.textContent = `Barcode/Item "${query}" not found in database. Check label for pork, alcohol, dead meat, or gelatin.`;
             resultIngredients.textContent = 'Unknown';
             resultBadge.textContent = 'UNVERIFIED';
             resultBadge.className = 'badge haram';
+        }
+    }
+
+    // Toggle QuaggaJS Camera Stream for iPhone/Mobile
+    function toggleCamera() {
+        const viewport = document.getElementById('interactive');
+        const btn = document.getElementById('cameraToggleBtn');
+
+        if (!cameraActive) {
+            viewport.style.display = 'block';
+            btn.textContent = "🛑 Stop Camera";
+            cameraActive = true;
+
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: viewport,
+                    constraints: {
+                        facingMode: "environment" // Uses rear iPhone camera
+                    }
+                },
+                decoder: {
+                    readers: ["ean_reader", "ean_8_reader", "upc_reader"]
+                }
+            }, function(err) {
+                if (err) {
+                    console.error(err);
+                    alert("Unable to access camera. Check permissions.");
+                    toggleCamera();
+                    return;
+                }
+                Quagga.start();
+            });
+
+            Quagga.onDetected(function(result) {
+                const code = result.codeResult.code;
+                document.getElementById('foodInput').value = code;
+                toggleCamera(); // Stop camera once scanned
+                scanFood();     // Automatically process item
+            });
+
+        } else {
+            Quagga.stop();
+            viewport.style.display = 'none';
+            btn.textContent = "📷 Use iPhone Camera Scanner";
+            cameraActive = false;
         }
     }
 </script>
